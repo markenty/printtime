@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <style>
     body {
@@ -20,7 +19,7 @@
       padding: 1rem;
       text-align: center;
     }
-    .upload-section, .feed {
+    .section {
       max-width: 600px;
       margin: 2rem auto;
       padding: 1rem;
@@ -28,19 +27,25 @@
       border-radius: 8px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
-    .upload-section input[type="file"] {
-      margin-top: 1rem;
+    input[type="text"], input[type="email"] {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      border-radius: 4px;
+      border: 1px solid #ccc;
     }
-    .upload-section button {
+    button, .pay-btn {
       margin-top: 1rem;
-      padding: 0.5rem 1rem;
+      padding: 0.6rem 1.2rem;
       background-color: #111;
       color: white;
       border: none;
       border-radius: 4px;
       cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
     }
-    .model-card {
+    .feed .model-card {
       margin-bottom: 2rem;
     }
     model-viewer {
@@ -53,16 +58,16 @@
     }
     .print-actions {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 1rem;
     }
-    .button {
-      background-color: #111;
-      color: white;
-      padding: 0.5rem 1rem;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
+    .verified {
+      font-weight: bold;
+      color: green;
+    }
+    .not-verified {
+      color: gray;
     }
   </style>
 </head>
@@ -72,19 +77,28 @@
   <h1>PrintTime Dashboard</h1>
 </header>
 
-<div class="upload-section">
-  <h2>Upload 3D Model (.glb)</h2>
-  <input type="file" id="fileInput" accept=".glb">
-  <button onclick="uploadModel()">Upload</button>
-  <div id="uploadStatus"></div>
+<div class="section">
+  <h2>Step 1: Pay for Access</h2>
+  <a href="https://your.clover.payment.link" target="_blank" class="pay-btn">Subscribe – $20/month</a>
 </div>
 
-<div class="feed" id="modelFeed">
+<div class="section">
+  <h2>Step 2: Register Your Model</h2>
+  <form onsubmit="submitEmailForm(event)">
+    <input type="text" id="modelName" placeholder="Model Name" required>
+    <input type="email" id="email" placeholder="Your Email" required>
+    <input type="text" id="notes" placeholder="Notes (optional)">
+    <button type="submit">Submit Model Metadata</button>
+  </form>
+  <p>📧 After submitting, email your STL to <strong>print@overhand.industries</strong> with the same model name.</p>
+  <div id="status"></div>
+</div>
+
+<div class="section feed" id="modelFeed">
   <h2>My Models</h2>
 </div>
 
 <script>
-  // Your Firebase config (live)
   const firebaseConfig = {
     apiKey: "AIzaSyAbMsmKG-u3eff1_bhn8mM3C3FMbt0Ot1E",
     authDomain: "printtime-520f6.firebaseapp.com",
@@ -96,58 +110,70 @@
   };
 
   firebase.initializeApp(firebaseConfig);
-  const storage = firebase.storage();
   const db = firebase.firestore();
 
-  async function uploadModel() {
-    const file = document.getElementById('fileInput').files[0];
-    const status = document.getElementById('uploadStatus');
+  async function submitEmailForm(e) {
+    e.preventDefault();
+    const name = document.getElementById("modelName").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const notes = document.getElementById("notes").value.trim();
+    const status = document.getElementById("status");
 
-    if (!file || !file.name.endsWith('.glb')) {
-      status.textContent = 'Only .glb files are allowed.';
+    if (!name || !email) {
+      status.textContent = "❌ Model name and email are required.";
       return;
     }
 
-    const storageRef = storage.ref(`uploads/${Date.now()}_${file.name}`);
-    await storageRef.put(file);
-    const downloadURL = await storageRef.getDownloadURL();
+    try {
+      await db.collection("models").add({
+        name,
+        email,
+        notes,
+        verified: false,
+        uploaded: new Date().toISOString()
+      });
+      status.textContent = "✅ Submission received. Now email your STL file with this model name.";
+      document.getElementById("modelName").value = "";
+      document.getElementById("email").value = "";
+      document.getElementById("notes").value = "";
+      loadModels();
+    } catch (err) {
+      console.error(err);
+      status.textContent = "❌ Submission failed. Try again.";
+    }
+  }
 
-    const metadata = {
-      name: file.name,
-      url: downloadURL,
-      uploaded: new Date().toISOString(),
-      estimatedTime: estimatePrintTime(file.size)
-    };
-
-    await db.collection("models").add(metadata);
-    status.textContent = '✅ Upload successful!';
+  async function logPrintTimePrompt(docId) {
+    const minutes = prompt("Enter actual print time in minutes:");
+    if (!minutes || isNaN(minutes)) return alert("Invalid input.");
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    const actual = `${h}h ${m}m`;
+    await db.collection("models").doc(docId).update({
+      actualPrintTime: actual,
+      printedAt: new Date().toISOString()
+    });
     loadModels();
   }
 
-  function estimatePrintTime(sizeBytes) {
-    const minutes = Math.round(sizeBytes / 50000); // rough guess: 50KB/min
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return `${h}h ${m}m`;
-  }
-
   async function loadModels() {
-    const container = document.getElementById('modelFeed');
-    container.innerHTML = '<h2>My Models</h2>';
-
+    const container = document.getElementById("modelFeed");
+    container.innerHTML = "<h2>My Models</h2>";
     const snapshot = await db.collection("models").orderBy("uploaded", "desc").get();
     snapshot.forEach(doc => {
       const data = doc.data();
-      const card = document.createElement('div');
-      card.className = 'model-card';
+      const card = document.createElement("div");
+      card.className = "model-card";
       card.innerHTML = `
-        <model-viewer src="${data.url}" camera-controls auto-rotate shadow-intensity="1" alt="3D model of ${data.name}"></model-viewer>
         <div class="info">
           <h3>${data.name}</h3>
           <p>Uploaded: ${new Date(data.uploaded).toLocaleDateString()}</p>
+          <p>Email: ${data.email || '—'}</p>
+          ${data.notes ? `<p>Notes: ${data.notes}</p>` : ""}
           <div class="print-actions">
-            <span>Est: ${data.estimatedTime}</span>
-            <button class="button">Use Print Time</button>
+            ${data.verified ? `<span class="verified">✅ STL Verified</span>` : `<span class="not-verified">⏳ Awaiting STL</span>`}
+            ${data.actualPrintTime ? `<span>Actual Print Time: ${data.actualPrintTime}</span>` : ""}
+            <button onclick="logPrintTimePrompt('${doc.id}')">Log Print Time</button>
           </div>
         </div>
       `;
