@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PrintTime Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f5f5f5;
+    }
+    header {
+      background-color: #111;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    .upload-section, .feed {
+      max-width: 600px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .upload-section input[type="file"] {
+      margin-top: 1rem;
+    }
+    .upload-section button {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background-color: #111;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .model-card {
+      margin-bottom: 2rem;
+    }
+    model-viewer {
+      width: 100%;
+      height: 60vh;
+      background-color: #eee;
+    }
+    .info {
+      padding: 1rem;
+    }
+    .print-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .button {
+      background-color: #111;
+      color: white;
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>PrintTime Dashboard</h1>
+</header>
+
+<div class="upload-section">
+  <h2>Upload 3D Model (.glb)</h2>
+  <input type="file" id="fileInput" accept=".glb">
+  <button onclick="uploadModel()">Upload</button>
+  <div id="uploadStatus"></div>
+</div>
+
+<div class="feed" id="modelFeed">
+  <h2>My Models</h2>
+</div>
+
+<script>
+  // Your Firebase config (live)
+  const firebaseConfig = {
+    apiKey: "AIzaSyAbMsmKG-u3eff1_bhn8mM3C3FMbt0Ot1E",
+    authDomain: "printtime-520f6.firebaseapp.com",
+    projectId: "printtime-520f6",
+    storageBucket: "printtime-520f6.appspot.com",
+    messagingSenderId: "897968361606",
+    appId: "1:897968361606:web:51897279100cb7301fc107",
+    measurementId: "G-B7FW467LCS"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const storage = firebase.storage();
+  const db = firebase.firestore();
+
+  async function uploadModel() {
+    const file = document.getElementById('fileInput').files[0];
+    const status = document.getElementById('uploadStatus');
+
+    if (!file || !file.name.endsWith('.glb')) {
+      status.textContent = 'Only .glb files are allowed.';
+      return;
+    }
+
+    const storageRef = storage.ref(`uploads/${Date.now()}_${file.name}`);
+    await storageRef.put(file);
+    const downloadURL = await storageRef.getDownloadURL();
+
+    const metadata = {
+      name: file.name,
+      url: downloadURL,
+      uploaded: new Date().toISOString(),
+      estimatedTime: estimatePrintTime(file.size)
+    };
+
+    await db.collection("models").add(metadata);
+    status.textContent = '✅ Upload successful!';
+    loadModels();
+  }
+
+  function estimatePrintTime(sizeBytes) {
+    const minutes = Math.round(sizeBytes / 50000); // rough guess: 50KB/min
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h}h ${m}m`;
+  }
+
+  async function loadModels() {
+    const container = document.getElementById('modelFeed');
+    container.innerHTML = '<h2>My Models</h2>';
+
+    const snapshot = await db.collection("models").orderBy("uploaded", "desc").get();
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const card = document.createElement('div');
+      card.className = 'model-card';
+      card.innerHTML = `
+        <model-viewer src="${data.url}" camera-controls auto-rotate shadow-intensity="1" alt="3D model of ${data.name}"></model-viewer>
+        <div class="info">
+          <h3>${data.name}</h3>
+          <p>Uploaded: ${new Date(data.uploaded).toLocaleDateString()}</p>
+          <div class="print-actions">
+            <span>Est: ${data.estimatedTime}</span>
+            <button class="button">Use Print Time</button>
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  }
+
+  loadModels();
+</script>
+
+</body>
+</html>
