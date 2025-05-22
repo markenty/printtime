@@ -2,11 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>PrintTime Dashboard</title>
+  <title>PrintTime Access</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <style>
     body {
       margin: 0;
@@ -34,7 +31,7 @@
       border-radius: 4px;
       border: 1px solid #ccc;
     }
-    button, .pay-btn {
+    .button, .pay-btn {
       margin-top: 1rem;
       padding: 0.6rem 1.2rem;
       background-color: #111;
@@ -45,36 +42,12 @@
       text-decoration: none;
       display: inline-block;
     }
-    .feed .model-card {
-      margin-bottom: 2rem;
-    }
-    model-viewer {
-      width: 100%;
-      height: 60vh;
-      background-color: #eee;
-    }
-    .info {
-      padding: 1rem;
-    }
-    .print-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      margin-top: 1rem;
-    }
-    .verified {
-      font-weight: bold;
-      color: green;
-    }
-    .not-verified {
-      color: gray;
-    }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>PrintTime Dashboard</h1>
+  <h1>PrintTime Access</h1>
 </header>
 
 <div class="section">
@@ -83,106 +56,10 @@
 </div>
 
 <div class="section">
-  <h2>Step 2: Register Your Model</h2>
-  <form onsubmit="submitEmailForm(event)">
-    <input type="text" id="modelName" placeholder="Model Name" required>
-    <input type="email" id="email" placeholder="Your Email" required>
-    <input type="text" id="notes" placeholder="Notes (optional)">
-    <button type="submit">Submit Model Metadata</button>
-  </form>
-  <p>📧 After submitting, email your STL to <strong>print@overhand.industries</strong> with the same model name.</p>
-  <div id="status"></div>
+  <h2>Step 2: Send Your STL</h2>
+  <p>After payment, click the button below to email your STL file.</p>
+  <a class="button" href="mailto:info@overhand.industries?subject=STL Submission&body=Model Name:%20[Enter%20Model%20Name]%0D%0AYour%20Notes:%20[Optional]%0D%0APlease%20attach%20your%20STL%20file%20to%20this%20email.">Email Your STL</a>
 </div>
-
-<div class="section feed" id="modelFeed">
-  <h2>My Models</h2>
-</div>
-
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAbMsmKG-u3eff1_bhn8mM3C3FMbt0Ot1E",
-    authDomain: "printtime-520f6.firebaseapp.com",
-    projectId: "printtime-520f6",
-    storageBucket: "printtime-520f6.appspot.com",
-    messagingSenderId: "897968361606",
-    appId: "1:897968361606:web:51897279100cb7301fc107",
-    measurementId: "G-B7FW467LCS"
-  };
-
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
-
-  async function submitEmailForm(e) {
-    e.preventDefault();
-    const name = document.getElementById("modelName").value.trim();
-    const email = document.getElementById("email").value.trim();
-    const notes = document.getElementById("notes").value.trim();
-    const status = document.getElementById("status");
-
-    if (!name || !email) {
-      status.textContent = "❌ Model name and email are required.";
-      return;
-    }
-
-    try {
-      await db.collection("models").add({
-        name,
-        email,
-        notes,
-        verified: false,
-        uploaded: new Date().toISOString()
-      });
-      status.textContent = "✅ Submission received. Now email your STL file with this model name.";
-      document.getElementById("modelName").value = "";
-      document.getElementById("email").value = "";
-      document.getElementById("notes").value = "";
-      loadModels();
-    } catch (err) {
-      console.error(err);
-      status.textContent = "❌ Submission failed. Try again.";
-    }
-  }
-
-  async function logPrintTimePrompt(docId) {
-    const minutes = prompt("Enter actual print time in minutes:");
-    if (!minutes || isNaN(minutes)) return alert("Invalid input.");
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    const actual = `${h}h ${m}m`;
-    await db.collection("models").doc(docId).update({
-      actualPrintTime: actual,
-      printedAt: new Date().toISOString()
-    });
-    loadModels();
-  }
-
-  async function loadModels() {
-    const container = document.getElementById("modelFeed");
-    container.innerHTML = "<h2>My Models</h2>";
-    const snapshot = await db.collection("models").orderBy("uploaded", "desc").get();
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const card = document.createElement("div");
-      card.className = "model-card";
-      card.innerHTML = `
-        <div class="info">
-          <h3>${data.name}</h3>
-          <p>Uploaded: ${new Date(data.uploaded).toLocaleDateString()}</p>
-          <p>Email: ${data.email || '—'}</p>
-          ${data.notes ? `<p>Notes: ${data.notes}</p>` : ""}
-          <div class="print-actions">
-            ${data.verified ? `<span class="verified">✅ STL Verified</span>` : `<span class="not-verified">⏳ Awaiting STL</span>`}
-            ${data.actualPrintTime ? `<span>Actual Print Time: ${data.actualPrintTime}</span>` : ""}
-            <button onclick="logPrintTimePrompt('${doc.id}')">Log Print Time</button>
-          </div>
-        </div>
-      `;
-      container.appendChild(card);
-    });
-  }
-
-  loadModels();
-</script>
 
 </body>
 </html>
